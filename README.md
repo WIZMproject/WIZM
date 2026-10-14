@@ -8,7 +8,7 @@
 [![Signatures](https://img.shields.io/badge/signatures-Falcon--512-fbbf24)]()
 [![Fee](https://img.shields.io/badge/fee-0.0001_flat-34d399)]()
 
-**Live site:** https://wizmproject.github.io/WIZM/ · **Wallet:** https://github.com/WIZMproject/WIZM_wallet
+**Live site:** https://wizmproject.github.io/WIZM/
 
 ---
 
