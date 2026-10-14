@@ -16,7 +16,7 @@
 
 Public blockchains face two slow-moving cliffs at once: large-scale quantum computers break the elliptic-curve cryptography securing essentially every production ledger, and transparent ledgers publish every payment graph forever. WIZM answers both with the same posture — **post-quantum primitives everywhere, privacy by default, no ceremonies, no trusted setups, no special roles**.
 
-WIZM is a **payments chain, not a general computer**. It moves value four ways — transparent transfers, stealth transfers, shielded notes, unshielding — on a five-validator proof-of-authority devnet sealing up to **1,200 transactions every 10 seconds** for a flat fee of **0.0001 WIZM**.
+WIZM combines transparent transfers, stealth transfers, shielded notes and unshielding on a five-validator proof-of-authority devnet sealing up to **1,200 transactions every 10 seconds** for a flat fee of **0.0001 WIZM**.
 
 ## Highlights
 
