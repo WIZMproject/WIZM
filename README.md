@@ -2,7 +2,7 @@
 
 ![WIZM](assets/logo.png)
 
-[![Mainnet](https://img.shields.io/badge/mainnet-live-34d399)](https://wizmproject.github.io/WIZM/)
+[![Devnet](https://img.shields.io/badge/devnet-live-34d399)](https://wizmproject.github.io/WIZM/)
 [![Validators](https://img.shields.io/badge/validators-5-7aa2f7)]()
 [![Consensus](https://img.shields.io/badge/consensus-PoA_10s-c4b5fd)]()
 [![Signatures](https://img.shields.io/badge/signatures-Falcon--512-fbbf24)]()
@@ -16,7 +16,7 @@
 
 Public blockchains face two slow-moving cliffs at once: large-scale quantum computers break the elliptic-curve cryptography securing essentially every production ledger, and transparent ledgers publish every payment graph forever. WIZM answers both with the same posture — **post-quantum primitives everywhere, privacy by default, no ceremonies, no trusted setups, no special roles**.
 
-WIZM is a **payments chain, not a general computer**. It moves value four ways — transparent transfers, stealth transfers, shielded notes, unshielding — on a five-validator proof-of-authority mainnet sealing up to **1,200 transactions every 10 seconds** for a flat fee of **0.0001 WIZM**.
+WIZM is a **payments chain, not a general computer**. It moves value four ways — transparent transfers, stealth transfers, shielded notes, unshielding — on a five-validator proof-of-authority devnet sealing up to **1,200 transactions every 10 seconds** for a flat fee of **0.0001 WIZM**.
 
 ## Highlights
 
@@ -70,7 +70,7 @@ Shielded pool: binary Merkle tree, depth 22 (4,194,304 notes), 64-root window, f
 
 ## Measured performance
 
-October 2026 five-validator mainnet, committed transactions only:
+October 2026 five-validator devnet, committed transactions only:
 
 | Metric | Observed |
 |---|---|
