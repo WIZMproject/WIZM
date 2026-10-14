@@ -2,8 +2,6 @@
 
 ![WIZM](assets/logo.png)
 
-> Private money for the quantum age. Every signature **Falcon-512**, every mempool entry sealed under **ML-KEM**, every hash **BLAKE3**, every shielded transfer proven in **Flock ZK** — no trusted setup, no ceremony.
-
 [![Mainnet](https://img.shields.io/badge/mainnet-live-34d399)](https://wizmproject.github.io/WIZM/)
 [![Validators](https://img.shields.io/badge/validators-5-7aa2f7)]()
 [![Consensus](https://img.shields.io/badge/consensus-PoA_10s-c4b5fd)]()
@@ -82,12 +80,6 @@ October 2026 five-validator mainnet, committed transactions only:
 | Block execution (1,200 txs) | 0.5–4.0s end-to-end |
 | Chain-true rejects | 0 at ≤150 TPS levels |
 | Single-run volume | 4M+ transactions committed |
-
-## WIZM Wallet
-
-Zero-configuration desktop + browser wallet (sister repo: [WIZM_wallet](https://github.com/WIZMproject/WIZM_wallet)). Node cert + API key embedded — open the app and it connects. Transparent sends, shielded deposits/transfers/unshields with real proofs, PBKDF2 + AES-256-GCM backup envelopes that round-trip across platforms.
-
-**Downloads (v0.1.0):** [macOS .dmg](https://github.com/WIZMproject/WIZM_wallet/releases/download/v0.1.0/WIZM.Wallet_0.1.0_universal.dmg) · [Windows portable](https://github.com/WIZMproject/WIZM_wallet/releases/download/v0.1.0/wizm-wallet-tauri-windows-portable.zip) · [Linux AppImage](https://github.com/WIZMproject/WIZM_wallet/releases/download/v0.1.0/WIZM-Wallet-0.1.0-x86_64.AppImage) · [all packages](https://github.com/WIZMproject/WIZM_wallet/releases) (deb/rpm/flatpak × x64/arm64)
 
 ## Documentation
 
