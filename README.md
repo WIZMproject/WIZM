@@ -90,7 +90,7 @@ October 2026 five-validator devnet, committed transactions only:
 
 - Email: [WIZM.project@proton.me](mailto:WIZM.project@proton.me)
 - X: [@WIZM_PB](https://x.com/WIZM_PB)
-- Reddit: [u/_WIZM_](https://www.reddit.com/user/_WIZM_/)
+- Discord: [chat](https://discordapp.com/users/1560226104994828358)
 - Odysee: [@WIZM.project](https://odysee.com/@WIZM.project:5)
 
 ## This repository
