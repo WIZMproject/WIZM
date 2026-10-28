@@ -1,0 +1,261 @@
+% WIZM White Paper — accurate current specification.
+% Compile: pdflatex whitepaper.tex (twice for references).
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{microtype}
+\geometry{margin=24mm}
+\hypersetup{colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black}
+
+\title{WIZM\\ \large A Post-Quantum Payment Chain with Transparent and Unlinkable Stealth Transfers}
+\author{WIZM Protocol Engineering}
+\date{29 October 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+WIZM is a five-validator proof-of-authority payment chain written in
+Rust. It uses Falcon-512 for signatures, ML-KEM for encrypted mempool
+and transport key establishment, BLAKE3 for hashing, and AES-256-GCM
+for encrypted mempool payloads. The ledger supports two transaction
+families: transparent transfers and stealth transfers.
+
+Stealth transfers hide the sender-to-recipient link with a one-time
+recipient address. They do **not** hide the sender or the amount: both
+are public consensus fields. WIZM does not implement shielded notes,
+confidential amounts, zero-knowledge proofs, or a shielded pool.
+The previous experimental zero-knowledge and shielded paths were
+removed; this paper describes the current system only.
+
+A block is sealed on a ten-second slot and carries at most 1,200
+transactions and 8 MiB. The resulting ceiling is 120 sealed
+transactions per second. Fees are flat at 10,000 base units, with a
+per-wallet burst multiplier above 20 transactions in one block.
+\end{abstract}
+
+\tableofcontents
+
+\section{Design scope}
+
+WIZM is a payments ledger, not a confidential-asset system. Its
+security goals are:
+
+\begin{enumerate}[leftmargin=*]
+  \item authenticate every value transfer with a post-quantum signature;
+  \item keep the recipient of a stealth payment unlinkable to its
+        published meta-address;
+  \item prevent replay, double spending, and nonce reuse;
+  \item make block capacity and fee behavior explicit and deterministic;
+  \item keep the encrypted mempool opaque until block ordering.
+\end{enumerate}
+
+The non-goals are equally explicit: amount confidentiality, sender
+confidentiality for stealth payments, unlinkability of the transparent
+tier, and zero-knowledge execution proofs. No zero-knowledge proof
+system is present in the current codebase.
+
+\section{Cryptographic primitives}
+
+\subsection{Signatures}
+
+Transactions, validator votes, block seals, and transport
+authentication use \textbf{Falcon-512}. A public key is 897 bytes; a
+detached signature is variable-length in the range 512--752 bytes.
+
+Addresses are the first 20 bytes of
+\[
+  \mathrm{addr}(pk) = \mathrm{BLAKE3}(pk)[0..20].
+\]
+
+\subsection{Encrypted mempool and transport}
+
+Mempool entries are encrypted under the committee's ML-KEM-512 key and
+AES-256-GCM. Inter-node transport uses an ML-KEM-768 key exchange and
+authenticated encryption. The encrypted mempool hides transaction
+contents from observers until ordering; it does not provide
+confidential balances or confidential transfer amounts.
+
+\subsection{Hashing}
+
+BLAKE3 is used for transaction hashes, block hashes, address
+derivation, state accumulation, and scheduling randomness. Domain
+separators are used where the protocol signs or hashes structured
+messages.
+
+\section{Transactions}
+
+All integer fields are little-endian. Wire sizes include the Falcon
+public key and signature; Falcon signatures are variable-length.
+
+\subsection{Transparent transfer}
+
+\begin{verbatim}
+[from:20][to:20][amount:8][nonce:8][Falcon pk:897][signature:512..752]
+\end{verbatim}
+
+\begin{itemize}[leftmargin=*]
+  \item Wire size: 1,465--1,705 bytes.
+  \item Public sender, receiver, and amount.
+  \item Signature covers \texttt{from || to || amount || nonce}.
+  \item Execution enforces the sequential account nonce and sufficient
+        balance.
+\end{itemize}
+
+\subsection{Stealth transfer}
+
+\begin{verbatim}
+[sender:20][stealth_addr:20][ephemeral:32][view_tag:1]
+[amount:8][key_image:32][Falcon pk:897][signature:512..752]
+\end{verbatim}
+
+\begin{itemize}[leftmargin=*]
+  \item Wire size: 1,522--1,762 bytes.
+  \item Sender and amount are public.
+  \item \texttt{stealth\_addr} is a one-time recipient address derived
+        from the recipient's spend key and an ephemeral shared value.
+  \item The recipient scans with the view key and the key image prevents
+        a second spend.
+  \item Signature covers the 113-byte body.
+  \item \textbf{The amount is a public 8-byte field.} There is no
+        amount encryption in the current wire format.
+\end{itemize}
+
+\subsection{Removed transaction families}
+
+The codebase no longer contains \texttt{Shielded},
+\texttt{ShieldedTransfer}, \texttt{ShieldedDeposit}, or
+\texttt{ShieldedUnshield}. There is no note, commitment, nullifier, or
+shielded-pool state. Old shielded data is not supported by the current
+chain.
+
+\section{Consensus and block limits}
+
+WIZM runs proof-of-authority among five validators. The steady-state
+slot is 10 seconds. Genesis and slow-start slots use longer durations
+to allow the mesh to form.
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Parameter & Value \\
+\midrule
+Validators & 5 seats \\
+Steady slot & 10 s \\
+Max transactions per block & 1,200 \\
+Max block body & 8 MiB \\
+Max sealed throughput & 120 TPS \\
+Finality & notary majority \\
+Fork resolution & earlier seal; deterministic unwind \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A proposal drains at most 1,200 transactions and 8 MiB. The count cap
+normally binds before the byte cap for transparent and stealth
+transactions. Block validation and execution enforce the same limits.
+
+\section{Ordering, mempool, and finality}
+
+The encrypted mempool admits ciphertext entries, maintains per-sender
+nonce floors, parks gap-held lanes, and drains in a deterministic order.
+A producer seals a block; validators sign notarization votes for the
+block hash and height. A majority of active seats advances finality.
+The finality model is crash-fault, not Byzantine-fault-tolerant state
+machine replication.
+
+Nodes synchronize blocks through direct unicast and gossip, with
+bounded pipelines and deterministic fork recovery. Mesh-best state is
+updated only from locally validated blocks, not from unvalidated peer
+height claims.
+
+\section{Tokenomics}
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Parameter & Value \\
+\midrule
+Symbol & WIZM \\
+Decimals & 8 \\
+Supply & approximately 83,120,300 WIZM \\
+Emission & 10 years, five 2-year periods \\
+Base fee & 10,000 base units (0.0001 WIZM) \\
+Ingress minimum & 1,000,000 base units (0.01 WIZM) \\
+Burst-free transactions & 20 per wallet per block \\
+Burst multiplier & 10x per additional transaction \\
+Current block reward & 0.8812645 WIZM per validator \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The base fee is charged once per value-bearing transaction. During the
+emission period fees are burned; after emission they are distributed to
+validators. The burst multiplier is per wallet and per block. A wallet
+that submits more than 20 fee-paying transactions in one block pays
+10x for the 21st, 100x for the 22nd, 1,000x for the 23rd, and so on
+until the fee becomes unpayable. Load generators must keep every wallet
+below this threshold.
+
+\section{Wallet and key handling}
+
+The native wallet stores keys under \texttt{\~{}/.wizm/wallets} with
+directory mode \texttt{0700} and file mode \texttt{0600}. The Tauri
+backend exposes explicit wallet list/save/delete commands. The browser
+wallet uses session-only storage; legacy plaintext wallet records are
+migrated to native storage or removed. Wallet backups use
+PBKDF2-SHA256 and AES-256-GCM.
+
+Stealth amounts are public. A wallet cannot use stealth to claim amount
+privacy; the user interface displays the unlinkability scope explicitly.
+
+\section{Testing and operations}
+
+The Rust test suite covers cryptography, transaction layouts,
+admission, execution, tokenomics, mempool behavior, consensus state,
+storage, and API surfaces. The current suite contains more than 400
+tests. Load tests use transparent and stealth transactions only. A
+ten-day mixed soak is configured with 50--150 TPS offered phases and
+an approximately 120 TPS offered average; the chain's own proposal cap
+remains 120 TPS, so high phases intentionally exercise mempool
+backlog and low phases drain it.
+
+\section{Security limitations}
+
+This is not a confidential payments system. In particular:
+
+\begin{itemize}[leftmargin=*]
+  \item transparent transfers expose sender, receiver, and amount;
+  \item stealth transfers expose sender and amount; only the recipient
+        link is hidden;
+  \item validators and mempool committee members can process plaintext
+        amounts after decryption/ordering;
+  \item no zero-knowledge proof, confidential commitment, or range
+        proof protects values;
+  \item independent security review and operational key management are
+        still required for production use.
+\end{itemize}
+
+Reporting bugs or attempting to reintroduce shielded/ZK paths is out of
+scope for this specification. The supported system is exactly the
+transparent and stealth design described above.
+
+\section{Conclusion}
+
+WIZM is a post-quantum, five-validator payment chain with explicit
+capacity, deterministic fees, an encrypted mempool, transparent
+transfers, and unlinkable stealth recipients. It deliberately does not
+claim confidential amounts or zero-knowledge privacy. Its security and
+performance claims are bounded by the wire formats, block limits, and
+cryptographic primitives specified here.
+
+\end{document}

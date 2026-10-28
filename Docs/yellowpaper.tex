@@ -1,0 +1,236 @@
+% WIZM Yellow Paper — formal, current production specification.
+% Compile: pdflatex yellowpaper.tex (twice for references).
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{microtype}
+\geometry{margin=24mm}
+\hypersetup{colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{protocol}{Protocol}[section]
+\theoremstyle{plain}
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{lemma}{Lemma}[section]
+
+\newcommand{\B}{\{0,1\}}
+\newcommand{\Bclx}{\B^{160}}
+\newcommand{\Bccxxxii}{\B^{256}}
+\newcommand{\concat}{\mathbin{\Vert}}
+
+\title{WIZM Yellow Paper\\ \large State Transition, PoA Consensus, Fees, and Transaction Layouts}
+\author{WIZM Protocol Engineering}
+\date{29 October 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This document specifies the current WIZM chain: a five-validator
+proof-of-authority ledger with transparent and stealth transfers. The
+chain uses Falcon-512 signatures, ML-KEM for encrypted mempool and
+transport key establishment, BLAKE3 hashing, and AES-256-GCM mempool
+encryption. It contains no zero-knowledge, shielded, confidential, or
+note-based transaction path. Stealth transfers provide recipient
+unlinkability only; sender and amount are public.
+\end{abstract}
+
+\section{Network parameters}
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Parameter & Value \\
+\midrule
+Chain ID & 7777 \\
+Validators & 5 PoA seats \\
+Steady slot & 10 seconds \\
+Genesis slot & 240 seconds \\
+Slow-start slot & 60 seconds \\
+Max transactions per block & 1200 \\
+Max block body & 8 MiB \\
+Max sealed throughput & 120 TPS \\
+Base fee & 10,000 base units \\
+Burst-free transactions per wallet/block & 20 \\
+Burst multiplier & 10x per excess transaction \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The proposal cap is the count cap first for transparent and stealth
+transactions. A block is invalid if it exceeds 1200 transactions or
+8 MiB, or if a wallet exceeds the burst schedule.
+
+\section{Cryptographic functions}
+
+Let $\mathrm{BLAKE3}:\B^*\to\B^{256}$ be BLAKE3-256. An address is
+\[
+  A(pk) = \mathrm{BLAKE3}(pk)[0:20] \in \Bclx.
+\]
+Falcon-512 provides signatures:
+\[
+  \mathrm{Verify}_{pk}(m,\sigma)=1.
+\]
+Public keys are 897 bytes; signatures are 512--752 bytes. ML-KEM-512 is
+used for encrypted mempool/committee key establishment; ML-KEM-768 is
+used for transport. AES-256-GCM encrypts mempool payloads.
+
+\section{State}
+
+A state $\sigma$ maps a 20-byte address to
+\[
+  \sigma(a) = (balance, nonce, public\_key).
+\]
+It also contains spent stealth key images, block metadata, committee
+state, and tokenomics counters. There is no shielded commitment tree,
+note set, nullifier set, or Merkle proof state.
+
+For a sender $a$ and amount $v$ with fee $f$, a transparent transfer is
+valid only if
+\[
+  balance(a) \ge v+f, \qquad nonce(tx)=nonce(a).
+\]
+After execution:
+\[
+  balance(a) \leftarrow balance(a)-v-f,\quad
+  nonce(a)\leftarrow nonce(a)+1.
+\]
+
+\section{Transaction layouts}
+
+All integers are little-endian. Falcon signatures are variable-length.
+
+\subsection{Transparent transfer}
+\[
+[from:20]\concat[to:20]\concat[amount:8]\concat[nonce:8]
+\concat[pk:897]\concat[sig:512..752].
+\]
+Wire size is 1,465--1,705 bytes. Sender, recipient, and amount are
+public. The signature covers the first 56 bytes.
+
+\subsection{Stealth transfer}
+\[
+[sender:20]\concat[stealth:20]\concat[ephemeral:32]
+\concat[view\_tag:1]\concat[amount:8]\concat[key\_image:32]
+\concat[pk:897]\concat[sig:512..752].
+\]
+Wire size is 1,522--1,762 bytes. The 113-byte body is signed. Sender
+and amount are public. The one-time \texttt{stealth} address is derived
+from the recipient's spend key and an ephemeral shared value. The
+key image prevents a second spend. There is no encrypted amount and no
+zero-knowledge proof.
+
+The address derivation is
+\[
+  shared = \mathrm{BLAKE3}(ephemeral),
+\]
+\[
+  stealth = \mathrm{BLAKE3}(spend\_pk \concat shared)[0:20],
+\]
+\[
+  view\_tag = shared[0].
+\]
+The recipient scans with the view secret and recomputes the expected
+address. The sender is visible in the transaction.
+
+\section{PoA consensus}
+
+Validators take turns producing blocks in ten-second slots. A producer
+drains at most 1200 transactions from the encrypted mempool, seals a
+block, and broadcasts it. Validators verify the block and sign a
+notarization vote over the chain/genesis domain, block hash, and height.
+A majority of active seats advances finality. This is a crash-fault
+finality rule, not a Byzantine-fault-tolerant consensus proof.
+
+Competing blocks at the same height are resolved deterministically:
+the earlier seal wins, with a deterministic tie-break and a bounded
+unwind. Nodes synchronize full block bodies through unicast and gossip;
+they update their mesh-best view only from locally validated blocks.
+
+\section{Fees and tokenomics}
+
+Let $n$ be the wallet's index among its fee-paying transactions in a
+block. The burst multiplier is
+\[
+  \mu(n)=
+  \begin{cases}
+    1, & n \le 20,\\
+    10, & n=21,\\
+    100, & n=22,\\
+    1000, & n=23,\\
+    \dots
+  \end{cases}
+\]
+The charged fee is
+\[
+  f(n)=10{,}000\cdot\mu(n).
+\]
+During emission, fees are burned. After emission, fees are distributed
+to validators. The block reward is
+\[
+  R_{validator} = \frac{E_{period}}{B_{period}\cdot N_{validators}}
+\]
+where $E_{period}$ is the emission for the current two-year period,
+$B_{period}=6{,}311{,}520$ blocks, and $N_{validators}=5$. At the
+current period this is 88,126,450 base units, or 0.8812645 WIZM per
+validator per block.
+
+\section{Capacity}
+
+For a block with $T$ transactions and body size $S$:
+\[
+  T \le 1200, \qquad S \le 8\cdot 1024^2.
+\]
+At a ten-second slot,
+\[
+  \Theta_{\max}=\frac{1200}{10}=120\ \mathrm{TPS}.
+\]
+A generator may submit faster than the chain seals; those transactions
+remain in the encrypted mempool. The chain itself never seals more than
+120 TPS under the current cap. The burst-free wallet limit is 20
+transactions per block, so at least 60 distinct wallets are needed to
+fill a 1,200-transaction block without multiplied fees.
+
+\section{What was removed}
+
+The following are not part of the current protocol:
+
+\begin{itemize}[leftmargin=*]
+  \item shielded transfers, shielded deposits, and unshields;
+  \item notes, commitments, nullifiers, and the shielded Merkle tree;
+  \item zero-knowledge proofs and proof verification;
+  \item encrypted stealth amounts;
+  \item shielded wallet, RPC, CLI, and Tauri surfaces.
+\end{itemize}
+
+Stealth is not confidential. It provides one-time recipient addresses
+and key-image double-spend protection only. Sender and amount are public
+consensus data.
+
+\section{Verification obligations}
+
+A conforming implementation must reject:
+
+\begin{itemize}[leftmargin=*]
+  \item any transaction outside the 1,200/8 MiB block limit;
+  \item any stealth transaction outside 1,522--1,762 bytes;
+  \item any wallet above the 20-transaction burst-free window without
+        the multiplied fee;
+  \item any replay or duplicate key image;
+  \item any attempt to introduce removed shielded/ZK transaction types.
+\end{itemize}
+
+The test suite and load harness must exercise only transparent and
+stealth transactions.
+
+\end{document}

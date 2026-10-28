@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WIZM — Post-Quantum Privacy Blockchain</title>
-<meta name="description" content="WIZM is a post-quantum, privacy-preserving payments blockchain. Falcon-512, ML-KEM, Flock ZK, 5-validator PoA mainnet.">
+<title>WIZM — Post-Quantum Payments Blockchain</title>
+<meta name="description" content="WIZM is a post-quantum payments blockchain. Falcon-512, ML-KEM, BLAKE3, 5-validator PoA. Transparent and unlinkable stealth transfers.">
 <link rel="icon" href="assets/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -127,8 +127,8 @@ footer a:hover{color:#fff;}
   <div class="hero">
     <img class="ghost" src="assets/logo.png" alt="">
     <span class="markwrap"><img class="mark" src="assets/logo.png" alt="WIZM"></span>
-    <h1>Post-Quantum<br>Privacy Blockchain</h1>
-    <p class="lead">Every signature <b>Falcon-512</b>, every mempool entry sealed under <b>ML-KEM</b>, every hash <b>BLAKE3</b>, every shielded transfer proven in <b>Flock&nbsp;ZK</b> — no trusted setup, no ceremony</p>
+    <h1>Post-Quantum<br>Payments Blockchain</h1>
+    <p class="lead">Every signature <b>Falcon-512</b>, every mempool entry sealed under <b>ML-KEM</b>, every hash <b>BLAKE3</b>. Transparent transfers and unlinkable stealth recipients.</p>
   </div>
 
   <section id="arch" class="sec">
@@ -138,14 +138,14 @@ footer a:hover{color:#fff;}
     </div>
     <div class="grid">
       <div class="bcard b w6"><div class="k">NETWORK · GOSSIPSUB + QUIC + UNICAST</div><h3>Every proposal travels twice</h3><p>Mesh propagation on <b>tx · vertices · votes · sync</b> topics with peer scoring, plus <b>direct unicast fan-out</b> to all four peers. Height dedup and the reorg rule resolve doubles deterministically. <span class="badge">TLS proxy + Bearer auth</span></p></div>
-      <div class="bcard g"><div class="k">SLOTS</div><h3>10 seconds</h3><p>Five seats, 4s grace, 60s fallbacks, 360-height epochs, attempt rotation, chain-time pacing</p></div>
+      <div class="bcard g"><div class="k">SLOTS + CAPACITY</div><h3>10 seconds</h3><p>Five seats, 4s grace, 60s fallbacks. Max <b>1,200 txs / 8 MiB</b> per block = <b>120 sealed TPS</b>.</p></div>
       <div class="bcard g"><div class="k">GATES</div><h3>Follow, don't fork</h3><p>Mesh-settle, blind-boot, behind, <b>flap-aware</b>, first-seen and syncing gates hold lagging seals</p></div>
       <div class="bcard g"><div class="k">FORKS</div><h3>Earlier seal wins</h3><p>Lower-hash tiebreak, 1-block unwind. Strictly improving — converges, never flaps</p></div>
       <div class="bcard g"><div class="k">HEALING</div><h3>Watchdog + pipeline</h3><p>10-min stall watchdog, <b>3 parallel sync windows</b>, fork-evidence unwind, checkpoints every 100</p></div>
-      <div class="bcard a"><div class="k">EXECUTION · FOUR FAMILIES</div><h3>Transparent, stealth, shielded, unshield</h3><p>Falcon-signed nonce lanes, dual-key meta-addresses, Flock notes in a depth-22 pool, 348-byte drains. Flat <b>10,000</b> fee on everything</p></div>
+      <div class="bcard a"><div class="k">EXECUTION · TWO FAMILIES</div><h3>Transparent + unlinkable stealth</h3><p>Falcon-signed nonce lanes and one-time stealth recipients. Sender and amount stay public; only the recipient link is hidden. Flat <b>10,000</b> fee.</p></div>
       <div class="bcard a"><div class="k">MEMPOOL + STATE</div><h3>Lanes that heal themselves</h3><p>Gap buffer, forfeit jumps, parked lanes, TTL sweep, re-grounding. <b>500 MB / 200k / 90-min TTL</b>. RocksDB, snapshots @2000, journal 32</p></div>
       <div class="bcard"><div class="k">FALCON-512</div><h3>Signatures everywhere</h3><p>Transactions, votes, transport auth. 897B public keys, variable-length detached signatures</p></div>
-      <div class="bcard"><div class="k">ML-KEM + BLAKE3</div><h3>Sealed and hashed</h3><p><b>512</b> for mempool, committee and notes · <b>768</b> for transport. One hash for blocks, stealth, schedule and proofs</p></div>
+      <div class="bcard"><div class="k">ML-KEM + BLAKE3</div><h3>Sealed and hashed</h3><p><b>512</b> for encrypted mempool and committee · <b>768</b> for transport. One hash for blocks, stealth derivation and scheduling</p></div>
     </div>
   </section>
 
@@ -173,7 +173,7 @@ footer a:hover{color:#fff;}
       <p class="ssub">Two papers, one system</p>
     </div>
     <div class="grid">
-      <div class="bcard"><div class="k">WHITEPAPER</div><h3>The full story</h3><p><b>WIZM — Post-Quantum Privacy Blockchain.</b> Architecture, cryptography, consensus, operations</p><p><a href="Docs/whitepaper.pdf" style="color:var(--cyn); font-weight:600; text-decoration:none;">Read the whitepaper →</a></p></div>
+      <div class="bcard"><div class="k">WHITEPAPER</div><h3>The full story</h3><p><b>WIZM — Post-Quantum Payments Blockchain.</b> Architecture, cryptography, consensus, operations</p><p><a href="Docs/whitepaper.pdf" style="color:var(--cyn); font-weight:600; text-decoration:none;">Read the whitepaper →</a></p></div>
       <div class="bcard"><div class="k">YELLOWPAPER</div><h3>The proofs</h3><p>State transition, PoA mathematics, schemes with correctness equations</p><p><a href="Docs/yellowpaper.pdf" style="color:var(--cyn); font-weight:600; text-decoration:none;">Read the yellowpaper →</a></p></div>
       <div class="bcard w6"><div class="k">CONTACTS</div><div class="contacts">
         <a href="mailto:WIZM.project@proton.me" title="WIZM.project@proton.me" aria-label="Email"><svg viewBox="0 0 24 24"><path d="M2 5h20v14H2V5zm2 2.2V17h16V7.2l-8 5.3-8-5.3zm8 3.5 6-3.9H6l6 3.9z"/></svg></a>
@@ -184,7 +184,7 @@ footer a:hover{color:#fff;}
     </div>
   </section>
 
-  <footer><img src="assets/logo.png" alt="">WIZM · Post-Quantum Privacy Blockchain<a href="https://github.com/WIZMproject/WIZM">GitHub</a></footer>
+  <footer><img src="assets/logo.png" alt="">WIZM · Post-Quantum Payments Blockchain<a href="https://github.com/WIZMproject/WIZM">GitHub</a></footer>
 </div>
 </body>
 </html>
