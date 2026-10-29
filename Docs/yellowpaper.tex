@@ -13,7 +13,7 @@
 \usepackage{enumitem}
 \usepackage{xcolor}
 \usepackage{microtype}
-\geometry{margin=24mm}
+\geometry{margin=23mm}
 \hypersetup{colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black}
 
 \theoremstyle{definition}
@@ -27,8 +27,11 @@
 \newcommand{\Bclx}{\B^{160}}
 \newcommand{\Bccxxxii}{\B^{256}}
 \newcommand{\concat}{\mathbin{\Vert}}
+\newcommand{\N}{\mathbb{N}}
 
-\title{WIZM Yellow Paper\\ \large State Transition, PoA Consensus, Fees, and Transaction Layouts}
+\title{\textbf{WIZM Yellow Paper}\\[2mm]
+\large State Transition, PoA Consensus, Mempool, Fees, and Network Semantics\\[1mm]
+\large Formal Specification of the Current Five-Validator Network}
 \author{WIZM Protocol Engineering}
 \date{29 October 2026}
 
@@ -36,181 +39,745 @@
 \maketitle
 
 \begin{abstract}
-This document specifies the current WIZM chain: a five-validator
-proof-of-authority ledger with transparent and stealth transfers. The
-chain uses Falcon-512 signatures, ML-KEM for encrypted mempool and
-transport key establishment, BLAKE3 hashing, and AES-256-GCM mempool
-encryption. Stealth transfers provide recipient unlinkability only;
-sender and amount are public.
+This document specifies the current WIZM ledger as a deterministic state
+transition system. WIZM is a five-validator proof-of-authority payment chain
+with transparent and stealth transfers. It uses Falcon-512 signatures,
+ML-KEM-512 for committee and mempool key establishment, ML-KEM-768 for
+inter-validator transport, BLAKE3 hashing, and AES-256-GCM mempool encryption.
+Stealth transfers provide recipient unlinkability only; sender and amount are
+public. The document defines the state, transaction validity, execution,
+encrypted mempool transitions, PoA slot schedule, fallback and fork rules,
+notary finality, synchronization, snapshots, fees, emission, capacity bounds,
+and the safety and liveness claims supported by the current design.
 \end{abstract}
 
-\section{Network parameters}
+\tableofcontents
+
+\section{Notation and Conventions}
+
+\begin{definition}[Basic notation]
+Let $\B=\{0,1\}$. For $n\in\N$, $\B^n$ is the set of $n$-bit strings.
+$\Bclx$ is the set of 20-byte account addresses and $\Bccxxxii$ is the set of
+32-byte hashes. $\concat$ denotes concatenation. Integers in wire formats are
+unsigned little-endian unless stated otherwise. A function $H:\B^*\to
+\Bccxxxii$ denotes BLAKE3-256.
+\end{definition}
+
+\begin{definition}[Execution environments]
+A \emph{protocol instance} is a tuple
+\[
+  \mathcal{W} = (N, \tau, T_{\max}, S_{\max}, H_0, \mathcal{C}_0),
+\]
+where $N$ is the committee size, $\tau$ is the steady slot duration,
+$T_{\max}$ is the block transaction cap, $S_{\max}$ is the block byte cap,
+$H_0$ is the genesis hash, and $\mathcal{C}_0$ is the genesis committee.
+The reference deployment has
+\[
+  N=5,\qquad \tau=10\ \mathrm{s},\qquad T_{\max}=1200,\qquad
+  S_{\max}=8\cdot 1024^2.
+\]
+\end{definition}
+
+\begin{definition}[Address]
+For a Falcon-512 public key $pk$,
+\[
+  A(pk)=H(pk)[0:20]\in\Bclx.
+\]
+An address is a 20-byte value; it is not a network identifier.
+\end{definition}
+
+\begin{definition}[Token units]
+One WIZM equals $10^8$ base units. The total supply is
+\[
+  \mathsf{SUPPLY}=8{,}312{,}029{,}999{,}000{,}000
+\]
+base units. The base fee is $10{,}000$ base units and the ingress and transfer
+minimum is $1{,}000{,}000$ base units.
+\end{definition}
+
+\section{Parameters}
 
 \begin{center}
-\begin{tabular}{@{}ll@{}}
+\begin{longtable}{@{}p{0.52\textwidth}p{0.40\textwidth}@{}}
 \toprule
 Parameter & Value \\
 \midrule
-Chain ID & 7777 \\
-Validators & 5 PoA seats \\
-Steady slot & 10 seconds \\
-Genesis slot & 240 seconds \\
-Slow-start slot & 60 seconds \\
-Max transactions per block & 1200 \\
-Max block body & 8 MiB \\
-Max sealed throughput & 120 TPS \\
-Base fee & 10,000 base units \\
-Burst-free transactions per wallet/block & 20 \\
-Burst multiplier & 10x per excess transaction \\
+Chain identifier & 7777 \\
+Committee size $N$ & 5 \\
+Quorum $q$ & $\lfloor N/2\rfloor+1=3$ \\
+Steady slot $\tau$ & 10 s \\
+Genesis slot & 240 s \\
+Slow-start slots & 60 s for slots 1--9 \\
+Slot grace & 4 s \\
+Fallback delay $D_f$ & 60 s \\
+Rebroadcast delay & 60 s \\
+Mesh settle & 150 s after boot \\
+Buffered-proposal suppression & 120 s \\
+Epoch length $L_e$ & 360 heights \\
+Finality recovery lag $L_f$ & 128 blocks \\
+Checkpoint interval & 100 heights \\
+Max transactions/block $T_{\max}$ & 1,200 \\
+Max body bytes $S_{\max}$ & 8 MiB \\
+Sealed throughput $\Theta_{\max}$ & 120 TPS \\
+Mempool byte cap & 500 MiB \\
+Mempool entry cap & 200,000 \\
+Mempool TTL & 5,400 s \\
+Mempool RSS ceiling & 5.5 GiB \\
+Peer cap & 128 connections \\
+Gossip mesh target & 4 (high 6) \\
+Base fee $f_0$ & 10,000 base units \\
+Burst-free wallet window $W$ & 20 txs/block \\
+Burst multiplier $m$ & 10 \\
+JSON-RPC body cap & 5 MiB \\
+gRPC message cap & 4 MiB \\
+Public per-IP read budget & 500 req/s \\
+Batch cap & 100 items \\
+Snapshot interval & 2,000 heights \\
+Body retention & 4,000 heights \\
+Header retention & 200,000 heights \\
+Rewind journal & 32 blocks \\
 \bottomrule
-\end{tabular}
+\end{longtable}
 \end{center}
 
-The proposal cap is the count cap first for transparent and stealth
-transactions. A block is invalid if it exceeds 1200 transactions or
-8 MiB, or if a wallet exceeds the burst schedule.
+\section{Cryptographic Primitives}
 
-\section{Cryptographic functions}
+\subsection{Signature scheme}
 
-Let $\mathrm{BLAKE3}:\B^*\to\B^{256}$ be BLAKE3-256. An address is
+\begin{definition}[Falcon-512]
+$\Pi_{\mathrm{sig}}=(\mathsf{Gen},\mathsf{Sign},\mathsf{Verify})$ is
+Falcon-512. A public key has 897 bytes and a detached signature is a
+variable-length compressed encoding in $[512,752]$ bytes. Correctness requires
 \[
-  A(pk) = \mathrm{BLAKE3}(pk)[0:20] \in \Bclx.
+  \Pr[\mathsf{Verify}(pk,m,\mathsf{Sign}(sk,m))=1]=1-\mathsf{negl}.
 \]
-Falcon-512 provides signatures:
+The implementation rejects malformed key and signature lengths before
+verification.
+\end{definition}
+
+\subsection{Key encapsulation and encryption}
+
+\begin{definition}[ML-KEM and AES-GCM]
+ML-KEM-512 is used for committee and mempool key establishment. ML-KEM-768 is
+used for transport key establishment. AES-256-GCM with a fresh nonce and an
+authentication tag protects mempool payloads. The committee KEM key pair is
+held by the validator set; RPC clients do not receive it.
+\end{definition}
+
+\subsection{Domains}
+
+Consensus signatures are bound to a chain/genesis domain:
 \[
-  \mathrm{Verify}_{pk}(m,\sigma)=1.
+  \mathrm{dom} = H(\texttt{wizm-consensus-domain-v1}\concat
+  \mathrm{chain\_id}_{\mathrm{le64}}\concat H_0).
 \]
-Public keys are 897 bytes; signatures are 512--752 bytes. ML-KEM-512 is
-used for encrypted mempool/committee key establishment; ML-KEM-768 is
-used for transport. AES-256-GCM encrypts mempool payloads.
+Votes sign the domain, block hash, and height or round. The domain prevents a
+signature produced for one chain or fork from being replayed on another.
 
 \section{State}
 
-A state $\sigma$ maps a 20-byte address to
+\begin{definition}[Account]
+An account is a pair
 \[
-  \sigma(a) = (balance, nonce, public\_key).
+  \alpha(a)=(\mathrm{balance}(a),\mathrm{nonce}(a))
 \]
-It also contains spent stealth key images, block metadata, committee
-state, and tokenomics counters.
+for $a\in\Bclx$, with an optional public-key record. The balance is measured in
+base units. The nonce is the sequence number of the next value-bearing
+transaction accepted from $a$.
+\end{definition}
 
-For a sender $a$ and amount $v$ with fee $f$, a transparent transfer is
-valid only if
+\begin{definition}[Ledger state]
+A ledger state is
 \[
-  balance(a) \ge v+f, \qquad nonce(tx)=nonce(a).
+  \sigma = (\mathcal{A},\mathcal{K},\mathcal{M},\mathcal{T},\mathcal{C}),
 \]
-After execution:
+where:
+\begin{itemize}[leftmargin=*]
+  \item $\mathcal{A}:\Bclx\rightharpoonup \N\times\N$ maps addresses to
+        balance and nonce;
+  \item $\mathcal{K}\subset\Bccxxxii$ is the set of spent stealth key images;
+  \item $\mathcal{M}$ is block and header metadata used for recovery;
+  \item $\mathcal{T}$ is the tokenomics state, including total emitted,
+        burned fees, and distributed fees;
+  \item $\mathcal{C}$ is the validator committee view for the current epoch.
+\end{itemize}
+\end{definition}
+
+\begin{definition}[Tokenomics state]
+The tokenomics state is
 \[
-  balance(a) \leftarrow balance(a)-v-f,\quad
-  nonce(a)\leftarrow nonce(a)+1.
+  \mathcal{T}=(E,B,D),
 \]
+where $E$ is total emitted base units, $B$ is total burned fees, and $D$ is
+total fees distributed to validators. The executor updates $\mathcal{T}$ from
+the exact fees charged in a block.
+\end{definition}
 
-\section{Transaction layouts}
+\section{Transactions}
 
-All integers are little-endian. Falcon signatures are variable-length.
+\subsection{Transparent layout}
 
-\subsection{Transparent transfer}
+\begin{definition}[Transparent transfer]
+A transparent transfer is
 \[
-[from:20]\concat[to:20]\concat[amount:8]\concat[nonce:8]
-\concat[pk:897]\concat[sig:512..752].
+  tx = [from:20]\concat[to:20]\concat[amount:8]\concat[nonce:8]
+  \concat[pk:897]\concat[sig:512..752].
 \]
-Wire size is 1,465--1,705 bytes. Sender, recipient, and amount are
-public. The signature covers the first 56 bytes.
-
-\subsection{Stealth transfer}
+Its body is
 \[
-[sender:20]\concat[stealth:20]\concat[ephemeral:32]
-\concat[view\_tag:1]\concat[amount:8]\concat[key\_image:32]
-\concat[pk:897]\concat[sig:512..752].
+  body = from\concat to\concat \mathrm{le64}(amount)\concat
+  \mathrm{le64}(nonce).
 \]
-Wire size is 1,522--1,762 bytes. The 113-byte body is signed. Sender
-and amount are public. The one-time \texttt{stealth} address is derived
-from the recipient's spend key and an ephemeral shared value. The
-key image prevents a second spend.
+The wire size is $1{,}465$--$1{,}705$ bytes. The sender, recipient, and amount
+are public. The signature covers $body$.
+\end{definition}
 
-The address derivation is
+\subsection{Stealth layout}
+
+\begin{definition}[Stealth transfer]
+A stealth transfer is
 \[
-  shared = \mathrm{BLAKE3}(ephemeral),
+  tx=[sender:20]\concat[stealth:20]\concat[ephemeral:32]
+  \concat[view\_tag:1]\concat[amount:8]\concat[key\_image:32]
+  \concat[pk:897]\concat[sig:512..752].
 \]
+Its body is the first 113 bytes. The wire size is $1{,}522$--$1{,}762$ bytes.
+The sender and amount are public. The one-time \texttt{stealth} address hides
+the link to the recipient's published meta-address. The key image prevents a
+second spend.
+\end{definition}
+
+\begin{definition}[Stealth derivation]
+Let $pk_s$ be the recipient spend public key and let $e$ be an ephemeral
+public value. Define
 \[
-  stealth = \mathrm{BLAKE3}(spend\_pk \concat shared)[0:20],
+  s=H(e),\qquad
+  stealth=H(pk_s\concat s)[0:20],\qquad
+  view\_tag=s[0].
 \]
+The recipient uses the view secret to recognize candidate outputs and
+recomputes the expected one-time address. The sender remains visible in the
+transaction, and the amount is an unencrypted 8-byte field.
+\end{definition}
+
+\begin{definition}[Key image]
+For an ephemeral value $e$ and one-time address $A_s$,
 \[
-  view\_tag = shared[0].
+  key\_image=H(e\concat A_s).
 \]
-The recipient scans with the view secret and recomputes the expected
-address. The sender is visible in the transaction.
+The executor rejects a transaction whose key image is already in
+$\mathcal{K}$; on success it adds the key image.
+\end{definition}
 
-\section{PoA consensus}
+\subsection{Length classification}
 
-Validators take turns producing blocks in ten-second slots. A producer
-drains at most 1200 transactions from the encrypted mempool, seals a
-block, and broadcasts it. Validators verify the block and sign a
-notarization vote over the chain/genesis domain, block hash, and height.
-A majority of active seats advances finality. This is a crash-fault
-finality rule, not Byzantine-fault-tolerant state-machine replication.
+Transparent and stealth envelopes overlap because Falcon signatures vary in
+length. Let $L$ be the wire length. The classifier first checks whether $L$ is
+inside the transparent or stealth envelope. If only one envelope matches, it
+returns that type. If both match, it parses the public key at offset 56 and
+tests whether $A(pk)$ equals the first 20 bytes. A match selects transparent;
+otherwise the transaction is treated as stealth. Signature, address-binding,
+and key-image verification remain mandatory downstream.
 
-Competing blocks at the same height are resolved deterministically:
-the earlier seal wins, with a deterministic tie-break and a bounded
-unwind. Nodes synchronize full block bodies through unicast and gossip;
-they update their mesh-best view only from locally validated blocks.
+\section{Validity Predicates}
 
-\section{Fees and tokenomics}
+\begin{definition}[Signature validity]
+For a transparent transfer, the signature must verify under $pk$ over
+$body=from\concat to\concat \mathrm{le64}(amount)\concat
+\mathrm{le64}(nonce)$. For a stealth transfer, it must verify under $pk$ over
+the 113-byte body. In both cases, $A(pk)$ must equal the declared sender.
+\end{definition}
 
-Let $n$ be the wallet's index among its fee-paying transactions in a
+\begin{definition}[Transfer policy]
+For a value-bearing transaction:
+\[
+  amount \ge 1{,}000{,}000,
+\]
+and the wire length must lie in the standard envelope for its classified
+type. A transaction outside its envelope or below the minimum amount is
+rejected before admission.
+\end{definition}
+
+\begin{definition}[Account validity]
+For a transparent transfer from $a$ with nonce $n$ and amount $v$, the state
+must satisfy:
+\[
+  \mathcal{A}(a)=(\beta,\nu),\qquad \nu=n,\qquad \beta\ge v+f,
+\]
+where $f$ is the fee computed by the fee function. For a stealth transfer the
+same balance and key-image checks apply; the sender's nonce is not part of the
+113-byte stealth body, and the key image is the replay guard for the one-time
+output.
+\end{definition}
+
+\section{Execution and Fees}
+
+\subsection{Fee function}
+
+Let $i$ be the 1-based index of a fee-paying transaction from wallet $w$ in a
 block. The burst multiplier is
 \[
-  \mu(n)=
+  \mu(i)=
   \begin{cases}
-    1, & n \le 20,\\
-    10, & n=21,\\
-    100, & n=22,\\
-    1000, & n=23,\\
+    1, & i\le 20,\\
+    10, & i=21,\\
+    100, & i=22,\\
+    1000, & i=23,\\
     \dots
   \end{cases}
 \]
-The charged fee is
+Equivalently,
 \[
-  f(n)=10{,}000\cdot\mu(n).
+  \mu(i)=10^{\max(0,i-20)},
 \]
-During emission, fees are burned. After emission, fees are distributed
-to validators. The block reward is
+with saturation at the maximum representable integer. The charged fee is
 \[
-  R_{validator} = \frac{E_{period}}{B_{period}\cdot N_{validators}}
+  f(i)=10{,}000\cdot\mu(i).
 \]
-where $E_{period}$ is the emission for the current two-year period,
-$B_{period}=6{,}311{,}520$ blocks, and $N_{validators}=5$. At the
-current period this is 88,126,450 base units, or 0.8812645 WIZM per
-validator per block.
+
+\subsection{Transparent execution}
+
+For a transparent transfer with body $(from,to,v,n)$, fee $f$, and state
+$\sigma$:
+\begin{enumerate}[leftmargin=*]
+  \item require $\mathcal{A}(from)=(\beta,\nu)$ with $\nu=n$ and
+        $\beta\ge v+f$;
+  \item set $\beta\leftarrow\beta-v-f$ and $\nu\leftarrow\nu+1$;
+  \item credit $v$ to $to$, creating the account if absent;
+  \item update the state root and tokenomics counters.
+\end{enumerate}
+
+\subsection{Stealth execution}
+
+For a stealth transfer with body
+$(sender,stealth,ephemeral,view\_tag,v,key\_image)$:
+\begin{enumerate}[leftmargin=*]
+  \item require $key\_image\notin\mathcal{K}$;
+  \item require the sender balance $\beta\ge v+f$;
+  \item debit $v+f$ from the sender;
+  \item credit $v$ to the one-time address;
+  \item insert $key\_image$ into $\mathcal{K}$;
+  \item update the state root and tokenomics counters.
+\end{enumerate}
+
+\begin{proposition}[Conservation per transfer]
+If execution succeeds, the sum of debits and credits in a transfer equals the
+fee: the sender loses $v+f$, the recipient gains $v$, and $f$ is recorded in
+the block's fee accumulator.
+\end{proposition}
+
+\begin{proposition}[Nonce monotonicity]
+For a successful transparent transaction from $a$ with nonce $\nu$, the next
+accepted transparent transaction from $a$ must use nonce $\nu+1$.
+\end{proposition}
+
+\section{Block Execution}
+
+\begin{definition}[Block]
+A block is a tuple
+\[
+  B=(h,p,\mathrm{producer},\mathrm{timestamp},txs,\mathrm{tx\_root},
+  \mathrm{state\_root},\mathrm{sig}),
+\]
+where $h$ is the height, $p$ is the parent hash, $txs$ is a sequence of raw
+transactions, and $\mathrm{sig}$ is the producer's Falcon-512 signature over
+the header hash and height.
+\end{definition}
+
+\begin{definition}[Block validity]
+A block $B$ is valid relative to state $\sigma$ and committee $C$ when:
+\begin{enumerate}[leftmargin=*]
+  \item $h=\mathrm{tip}+1$ and $p$ equals the current tip hash;
+  \item the producer is $C[(h+a)\bmod |C|]$ for some attempt $a$ that is due;
+  \item the producer signature verifies under the committee key;
+  \item $|txs|\le 1{,}200$ and the encoded body is at most 8 MiB;
+  \item $\mathrm{tx\_root}$ is the root over the transaction bytes;
+  \item each transaction passes classification, signature, policy, balance,
+        and replay checks;
+  \item the resulting state root equals the persisted root after execution.
+\end{enumerate}
+\end{definition}
+
+\begin{definition}[Fee accounting]
+For each block, let $F$ be the sum of fees of transactions that actually
+applied. If the block height is inside the emission window,
+\[
+  B\leftarrow B+F,\qquad D\leftarrow D,
+\]
+otherwise the fee is divided among $N$ validators, the divisible part is
+added to $D$, and the remainder is added to $B$.
+\end{definition}
+
+\begin{definition}[Block reward]
+For emission period $j$,
+\[
+  R_j=\frac{E_j}{B_{\mathrm{period}}N},
+\]
+where $B_{\mathrm{period}}=6{,}311{,}520$ blocks. The reward is credited to
+each validator's configured address.
+\end{definition}
+
+\section{Mempool Transition System}
+
+\begin{definition}[Entry]
+A mempool entry is a tuple
+\[
+  e=(\mathrm{id},\mathrm{ciphertext},\mathrm{author},\mathrm{nonce},
+  \mathrm{arrival},\mathrm{size}),
+\]
+where $\mathrm{id}$ is the raw transaction hash, $\mathrm{ciphertext}$ is the
+encrypted transaction body, and $\mathrm{author}$ identifies the submitting
+lane. Entries whose layout exposes a nonce carry it in the header.
+\end{definition}
+
+\begin{definition}[Admission]
+An entry is admitted when:
+\begin{itemize}[leftmargin=*]
+  \item the pool byte, entry, and RSS limits permit it;
+  \item the transaction classification and transfer policy pass;
+  \item the fee payer's live balance is at least the ingress minimum;
+  \item the transaction signature and address binding pass;
+  \item a stealth key image is not already spent or pending;
+  \item the entry is not a duplicate raw transaction.
+\end{itemize}
+\end{definition}
+
+\begin{definition}[Floor and parking]
+For each sender $a$, let $\phi(a)$ be the next nonce floor. A transparent
+entry with nonce $n$ is immediately drainable when $n=\phi(a)$. If $n>\phi(a)$,
+the entry is parked until the gap closes. If the gap cannot close before the
+bounded hold timeout, the parked entries are released or evicted according to
+the pool policy.
+\end{definition}
+
+\begin{definition}[Drain]
+A producer drains entries in a deterministic order subject to
+$T_{\max}$ and $S_{\max}$. The drain respects the per-sender floor and never
+emits a nonce ahead of its predecessor. Entries that cannot be applied are
+excluded from the economic fee accumulator.
+\end{definition}
+
+\begin{definition}[Eviction]
+Entries are evicted when their TTL expires, when the pool is above its byte or
+entry ceiling, or when the process RSS gate requires shedding. The pool keeps
+counters for expired, tail-evicted, duplicate, and forfeited entries so that
+eviction is observable.
+\end{definition}
+
+\section{PoA Slot Schedule}
+
+\subsection{Committee}
+
+\begin{definition}[Committee]
+A committee is an ordered list of seats
+\[
+  C=(c_0,\dots,c_{N-1}),\qquad c_i=(\mathrm{index}_i,\mathrm{pubkey}_i),
+\]
+where each active seat has a Falcon-512 public key. Seats are stable; a
+removed seat is a hole and does not shift later indices.
+\end{definition}
+
+\begin{definition}[Quorum]
+For $n$ active seats,
+\[
+  q=\left\lfloor\frac{n}{2}\right\rfloor+1.
+\]
+For the reference five-seat committee, $q=3$.
+\end{definition}
+
+\subsection{Slot arithmetic}
+
+\begin{definition}[Producer]
+At height $h$ and attempt $a$,
+\[
+  \mathrm{producer}(h,a)=C[(h+a)\bmod N].
+\]
+Attempt 0 is the normal round-robin producer. Attempt $a>0$ is a fallback
+producer after $a$ expired slots for the same height.
+\end{definition}
+
+\begin{definition}[Slow start]
+Slot 0 has duration $240$ seconds. Slots 1 through 9 have duration $60$
+seconds. Slot 10 and later have duration $\tau=10$ seconds. A slot has a
+four-second grace window after its nominal end.
+\end{definition}
+
+\begin{definition}[Attempt due]
+Let $S(t)$ be the current slot at wall time $t$ and let
+\[
+  \mathrm{due}(h,t)=\max\left(0,S(t)-S(\mathrm{start}(h))\right).
+\]
+A block for height $h$ produced at attempt $a\le \mathrm{due}(h,t)$ is
+eligible; later attempts are not yet due. The fallback spacing is 60 seconds.
+\end{definition}
+
+\subsection{Suppression gates}
+
+A node suppresses its own proposal when:
+\begin{itemize}[leftmargin=*]
+  \item it booted less than 150 seconds ago (mesh settle);
+  \item it holds a fresh competing proposal for the same height (bounded by
+        120 seconds);
+  \item a validated mesh sample is ahead and recent;
+  \item it is executing a catch-up or sync pipeline;
+  \item its previous seal is within the rebroadcast window.
+\end{itemize}
+These gates protect a half-formed mesh from permanent same-height forks. They
+do not alter the producer schedule or the finality quorum.
+
+\section{Fork Convergence}
+
+\begin{definition}[Better tip]
+For two valid versions of the same height, the better version has:
+\begin{enumerate}[leftmargin=*]
+  \item the smaller production attempt; or
+  \item for equal attempts, the lexicographically smaller block hash.
+\end{enumerate}
+\end{definition}
+
+\begin{proposition}[Strict improvement]
+The better-tip relation is a strict total order on distinct valid versions of
+the same height. Repeated adoption therefore cannot oscillate between two
+versions.
+\end{proposition}
+
+\begin{definition}[Unwind]
+When a node adopts a better same-height version, it unwinds its local tip by
+at most one height, re-executes the winning block, and updates its machine,
+storage, and mempool floors. The unwind is bounded by the persisted rewind
+journal.
+\end{definition}
+
+\section{Finality}
+
+\begin{definition}[Notarization vote]
+A notarization vote is
+\[
+  v=(\mathrm{height},\mathrm{block\_hash},\mathrm{signer},
+  \mathrm{domain},\mathrm{signature}),
+\]
+where the signature covers
+\[
+  \texttt{wizm/notary/v2}\concat\mathrm{domain}\concat
+  \mathrm{block\_hash}\concat\mathrm{le64}(\mathrm{height}).
+\]
+The wire vote uses the corresponding \texttt{wizm/vote/v2} envelope; the node
+verifies the wire signature against the committee key and records the verified
+vote.
+\end{definition}
+
+\begin{definition}[Finalized height]
+Let $\mathcal{V}(h)$ be the set of valid signers with votes for height $h$ on
+one block hash. Height $h$ is finalized when
+\[
+  |\mathcal{V}(h)|\ge q
+\]
+and every height below $h$ is already finalized. The finalized watermark is
+the greatest such contiguous height.
+\end{definition}
+
+\begin{proposition}[Contiguity]
+A quorum at height $h$ does not advance the watermark while a lower height
+lacks a quorum. This prevents a gap from being silently treated as final.
+\end{proposition}
+
+\begin{definition}[Recovery floor]
+A node that restores state or adopts a validated sync prefix may set its
+recovery watermark to
+\[
+  F=\max(0,\mathrm{tip}-128).
+\]
+The floor is a recovery aid over locally validated history; it is not a claim
+that the historical heights were individually re-voted in the current
+process.
+\end{definition}
+
+\section{Synchronization}
+
+\begin{definition}[Sync request]
+A node requests a range
+\[
+  [\mathrm{from},\mathrm{from}+\ell)
+\]
+from a peer, where $\ell$ is bounded by the sync window. The response contains
+full block bodies. The receiver validates parent links, producer signatures,
+transaction roots, and execution before adopting the range.
+\end{definition}
+
+\begin{proposition}[No unvalidated adoption]
+A node may update its mesh-best sample from a peer height only after it has
+validated a linking block or prefix. A far-future height claim alone cannot
+raise the local tip or suppress local production indefinitely.
+\end{proposition}
+
+\begin{definition}[Snapshot]
+A snapshot is a tuple
+\[
+  \Sigma=(h,\mathrm{root},\mathrm{id},\mathrm{parts}),
+\]
+where $h$ is the snapshot height, $\mathrm{root}$ is the state root,
+$\mathrm{id}$ is a content identifier, and $\mathrm{parts}$ is the set of
+uploaded slices. Import verifies the part count, content identifier, state
+root, and height before sealing the snapshot.
+\end{definition}
+
+\section{Tokenomics Functions}
+
+\begin{definition}[Emission]
+For height $h$, the emission period is
+\[
+  j(h)=\min\left(4,\left\lfloor\frac{h}{B_{\mathrm{period}}}\right\rfloor\right).
+\]
+The per-validator block reward is
+\[
+  R(h)=\frac{E_{j(h)}}{B_{\mathrm{period}}N}
+\]
+while $h<5B_{\mathrm{period}}$; otherwise $R(h)=0$.
+\end{definition}
+
+\begin{definition}[Fee phase]
+For $h<5B_{\mathrm{period}}$, fees are burned. After that, fees are divided
+among validators and any indivisible remainder is burned.
+\end{definition}
+
+\begin{proposition}[Fee non-negativity]
+The fee accumulator is monotone non-decreasing and saturates rather than
+wrapping. A block cannot reduce a previously persisted burned-fee counter.
+\end{proposition}
 
 \section{Capacity}
 
-For a block with $T$ transactions and body size $S$:
+\begin{proposition}[Sealed throughput bound]
+For any block sequence with slot duration at least ten seconds and at most
+1,200 transactions per block, the sealed transaction rate is at most
 \[
-  T \le 1200, \qquad S \le 8\cdot 1024^2.
+  \Theta_{\max}=\frac{1{,}200}{10}=120\ \mathrm{TPS}.
 \]
-At a ten-second slot,
+\end{proposition}
+
+\begin{proposition}[Wallet lower bound]
+To fill a 1,200-transaction block without a burst multiplier, a generator
+needs at least
 \[
-  \Theta_{\max}=\frac{1200}{10}=120\ \mathrm{TPS}.
+  \left\lceil \frac{1{,}200}{20}\right\rceil=60
 \]
-A generator may submit faster than the chain seals; those transactions
-remain in the encrypted mempool. The chain itself never seals more than
-120 TPS under the current cap. The burst-free wallet limit is 20
-transactions per block, so at least 60 distinct wallets are needed to
-fill a 1,200-transaction block without multiplied fees.
+distinct fee-paying wallets, assuming each wallet contributes at most 20
+fee-paying transactions to the block.
+\end{proposition}
 
-\section{Verification obligations}
+\section{Safety and Liveness}
 
-A conforming implementation must reject:
+\begin{definition}[Crash-fault model]
+The reference network has $N=5$ seats and quorum $q=3$. A crashed or
+unavailable seat stops producing and voting. The model does not make claims
+about arbitrary equivocation by a validator with a valid key.
+\end{definition}
+
+\begin{proposition}[Liveness with three seats]
+If at least three seats are online and follow the schedule, the chain can
+produce and finalize. With two online seats, the quorum of three cannot be
+reached and finality halts until a third seat returns.
+\end{proposition}
+
+\begin{proposition}[Finality monotonicity]
+The finalized watermark is monotone under the protocol. A rewind operation is
+an explicit operator action, not a routine consensus transition.
+\end{proposition}
+
+\section{Security Analysis}
+
+\subsection{Message authentication}
+
+All consensus messages are signed and domain-bound. A vote or seal from one
+chain/genesis domain does not verify on another. Transaction signatures bind
+the sender address to the embedded public key; the address is checked before
+execution.
+
+\subsection{Replay and double spend}
+
+Transparent transactions use sequential nonces. Stealth transfers use key
+images. The mempool rejects duplicate transaction hashes and spent or pending
+key images. A sealed transaction is also checked against the committed hash
+set.
+
+\subsection{Resource bounds}
+
+The protocol fixes block count and bytes, mempool bytes and entries, RPC
+bodies and batches, peers, and per-wallet fees. These are not optional
+implementation details: a conforming node must enforce them before expensive
+work. Public RPC gateways additionally apply per-IP and per-key limits.
+
+\subsection{Trust boundary}
+
+Validator keys are not available to RPC clients. Public API keys can submit
+transactions but cannot sign blocks or votes. The operator rewind path is
+separate from normal submission. Wallet signing keys stay in wallet storage or
+a loopback sidecar.
+
+\section{Conformance Requirements}
+
+A conforming implementation must:
 
 \begin{itemize}[leftmargin=*]
-  \item any transaction outside the 1,200/8 MiB block limit;
-  \item any stealth transaction outside 1,522--1,762 bytes;
-  \item any wallet above the 20-transaction burst-free window without
-        the multiplied fee;
-  \item any replay or duplicate key image.
+  \item classify transparent and stealth layouts by wire envelope and address
+        binding;
+  \item reject transactions outside the standard size envelope, below the
+        minimum amount, with an invalid signature, with a bad nonce, or with a
+        duplicate key image;
+  \item enforce the 1,200 transaction and 8 MiB block caps;
+  \item enforce the per-wallet burst multiplier;
+  \item verify the scheduled producer and block signature;
+  \item apply the better-tip rule for same-height versions;
+  \item require a quorum of validated votes for finality;
+  \item validate sync prefixes before adoption;
+  \item persist state, fee counters, key images, and block metadata
+        atomically;
+  \item enforce the configured RPC permissions and limits.
 \end{itemize}
 
-The test suite and load harness must exercise only transparent and
-stealth transactions.
+\section{References}
+
+\begin{thebibliography}{9}
+
+\bibitem{falcon}
+P.-A. Fouque, J. Hoffstein, P. Kirchner, V. Lyubashevsky, T. Pornin,
+T. Prest, T. Ricosset, G. Seiler, W. Whyte, and Z. Zhang.
+\emph{Falcon: Fast-Fourier Lattice-based Compact Signatures over NTRU}.
+2020.
+
+\bibitem{kyber}
+R. Avanzi, J. Bos, L. Ducas, E. Kiltz, T. Lepoint, V. Lyubashevsky,
+J. M. Schanck, P. Schwabe, G. Seiler, and D. Stehl\'e.
+\emph{CRYSTALS-Kyber: A CCA-Secure Module-Lattice-Based KEM}.
+IEEE EuroS\&P, 2018.
+
+\bibitem{blake3}
+J. O'Connor, J.-P. Aumasson, S. Neves, and Z. Wilcox-O'Hearn.
+\emph{BLAKE3: One Function, Fast Everywhere}.
+2020.
+
+\bibitem{libp2p}
+Protocol Labs.
+\emph{libp2p: A Modular Peer-to-Peer Networking Stack}.
+2024.
+
+\bibitem{rocksdb}
+Facebook Engineering.
+\emph{RocksDB: A Persistent Key-Value Store for Flash and RAM Storage}.
+2024.
+
+\bibitem{poa}
+S. De Angelis, L. Aniello, R. Baldoni, F. Lombardi, A. Margheri, and
+V. Sassone.
+\emph{PBFT vs Proof-of-Authority: Applying the CAP Theorem to Permissioned
+Blockchain}.
+2018.
+
+\bibitem{stealth}
+N. van Saberhagen.
+\emph{CryptoNote v2.0}.
+2013.
+
+\end{thebibliography}
 
 \end{document}
