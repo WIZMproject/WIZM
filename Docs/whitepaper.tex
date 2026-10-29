@@ -31,11 +31,8 @@ for encrypted mempool payloads. The ledger supports two transaction
 families: transparent transfers and stealth transfers.
 
 Stealth transfers hide the sender-to-recipient link with a one-time
-recipient address. They do **not** hide the sender or the amount: both
-are public consensus fields. WIZM does not implement shielded notes,
-confidential amounts, zero-knowledge proofs, or a shielded pool.
-The previous experimental zero-knowledge and shielded paths were
-removed; this paper describes the current system only.
+recipient address. The sender and amount are public consensus fields.
+This paper describes the current transparent and stealth design only.
 
 A block is sealed on a ten-second slot and carries at most 1,200
 transactions and 8 MiB. The resulting ceiling is 120 sealed
@@ -47,8 +44,7 @@ per-wallet burst multiplier above 20 transactions in one block.
 
 \section{Design scope}
 
-WIZM is a payments ledger, not a confidential-asset system. Its
-security goals are:
+WIZM is a payments ledger. Its security goals are:
 
 \begin{enumerate}[leftmargin=*]
   \item authenticate every value transfer with a post-quantum signature;
@@ -59,10 +55,8 @@ security goals are:
   \item keep the encrypted mempool opaque until block ordering.
 \end{enumerate}
 
-The non-goals are equally explicit: amount confidentiality, sender
-confidentiality for stealth payments, unlinkability of the transparent
-tier, and zero-knowledge execution proofs. No zero-knowledge proof
-system is present in the current codebase.
+The non-goals are equally explicit: hiding the sender or amount in
+stealth payments, and unlinkability of the transparent tier.
 
 \section{Cryptographic primitives}
 
@@ -82,8 +76,8 @@ Addresses are the first 20 bytes of
 Mempool entries are encrypted under the committee's ML-KEM-512 key and
 AES-256-GCM. Inter-node transport uses an ML-KEM-768 key exchange and
 authenticated encryption. The encrypted mempool hides transaction
-contents from observers until ordering; it does not provide
-confidential balances or confidential transfer amounts.
+contents from observers until ordering; it does not hide balances or
+transfer amounts.
 
 \subsection{Hashing}
 
@@ -129,14 +123,6 @@ public key and signature; Falcon signatures are variable-length.
   \item \textbf{The amount is a public 8-byte field.} There is no
         amount encryption in the current wire format.
 \end{itemize}
-
-\subsection{Removed transaction families}
-
-The codebase no longer contains \texttt{Shielded},
-\texttt{ShieldedTransfer}, \texttt{ShieldedDeposit}, or
-\texttt{ShieldedUnshield}. There is no note, commitment, nullifier, or
-shielded-pool state. Old shielded data is not supported by the current
-chain.
 
 \section{Consensus and block limits}
 
@@ -215,8 +201,8 @@ wallet uses session-only storage; legacy plaintext wallet records are
 migrated to native storage or removed. Wallet backups use
 PBKDF2-SHA256 and AES-256-GCM.
 
-Stealth amounts are public. A wallet cannot use stealth to claim amount
-privacy; the user interface displays the unlinkability scope explicitly.
+Stealth amounts are public. The user interface displays the
+unlinkability scope explicitly.
 
 \section{Testing and operations}
 
@@ -231,7 +217,7 @@ backlog and low phases drain it.
 
 \section{Security limitations}
 
-This is not a confidential payments system. In particular:
+WIZM does not hide balances or transfer amounts. In particular:
 
 \begin{itemize}[leftmargin=*]
   \item transparent transfers expose sender, receiver, and amount;
@@ -239,23 +225,18 @@ This is not a confidential payments system. In particular:
         link is hidden;
   \item validators and mempool committee members can process plaintext
         amounts after decryption/ordering;
-  \item no zero-knowledge proof, confidential commitment, or range
-        proof protects values;
   \item independent security review and operational key management are
         still required for production use.
 \end{itemize}
 
-Reporting bugs or attempting to reintroduce shielded/ZK paths is out of
-scope for this specification. The supported system is exactly the
-transparent and stealth design described above.
 
 \section{Conclusion}
 
 WIZM is a post-quantum, five-validator payment chain with explicit
 capacity, deterministic fees, an encrypted mempool, transparent
 transfers, and unlinkable stealth recipients. It deliberately does not
-claim confidential amounts or zero-knowledge privacy. Its security and
-performance claims are bounded by the wire formats, block limits, and
-cryptographic primitives specified here.
+claim that balances or amounts are hidden. Its security and performance
+claims are bounded by the wire formats, block limits, and cryptographic
+primitives specified here.
 
 \end{document}

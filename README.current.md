@@ -8,7 +8,7 @@ Post-quantum payment chain with transparent and stealth transfers.
 - Falcon-512 signatures; ML-KEM-512 encrypted mempool/committee; ML-KEM-768 transport; BLAKE3; AES-256-GCM.
 - **Transparent** transfers: sender, recipient and amount public.
 - **Stealth** transfers: one-time recipient address hides the sender-to-recipient link only. Sender and amount are public.
-- No shielded pool, notes, commitments, nullifiers, confidential amounts, or zero-knowledge proofs.
+- Transparent and stealth transfers only; sender and amount are public.
 - Maximum **1,200 transactions / 8 MiB per block**, or **120 TPS** at the 10-second slot.
 - Flat **10,000 base-unit** fee; first 20 fee-paying transactions per wallet per block are burst-free, then 10x, 100x, 1,000x, etc.
 - Supply approximately 83,120,300 WIZM, emitted over ten years.

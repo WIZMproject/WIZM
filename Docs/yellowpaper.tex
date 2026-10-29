@@ -40,9 +40,8 @@ This document specifies the current WIZM chain: a five-validator
 proof-of-authority ledger with transparent and stealth transfers. The
 chain uses Falcon-512 signatures, ML-KEM for encrypted mempool and
 transport key establishment, BLAKE3 hashing, and AES-256-GCM mempool
-encryption. It contains no zero-knowledge, shielded, confidential, or
-note-based transaction path. Stealth transfers provide recipient
-unlinkability only; sender and amount are public.
+encryption. Stealth transfers provide recipient unlinkability only;
+sender and amount are public.
 \end{abstract}
 
 \section{Network parameters}
@@ -92,8 +91,7 @@ A state $\sigma$ maps a 20-byte address to
   \sigma(a) = (balance, nonce, public\_key).
 \]
 It also contains spent stealth key images, block metadata, committee
-state, and tokenomics counters. There is no shielded commitment tree,
-note set, nullifier set, or Merkle proof state.
+state, and tokenomics counters.
 
 For a sender $a$ and amount $v$ with fee $f$, a transparent transfer is
 valid only if
@@ -127,8 +125,7 @@ public. The signature covers the first 56 bytes.
 Wire size is 1,522--1,762 bytes. The 113-byte body is signed. Sender
 and amount are public. The one-time \texttt{stealth} address is derived
 from the recipient's spend key and an ephemeral shared value. The
-key image prevents a second spend. There is no encrypted amount and no
-zero-knowledge proof.
+key image prevents a second spend.
 
 The address derivation is
 \[
@@ -150,7 +147,7 @@ drains at most 1200 transactions from the encrypted mempool, seals a
 block, and broadcasts it. Validators verify the block and sign a
 notarization vote over the chain/genesis domain, block hash, and height.
 A majority of active seats advances finality. This is a crash-fault
-finality rule, not a Byzantine-fault-tolerant consensus proof.
+finality rule, not Byzantine-fault-tolerant state-machine replication.
 
 Competing blocks at the same height are resolved deterministically:
 the earlier seal wins, with a deterministic tie-break and a bounded
@@ -201,22 +198,6 @@ remain in the encrypted mempool. The chain itself never seals more than
 transactions per block, so at least 60 distinct wallets are needed to
 fill a 1,200-transaction block without multiplied fees.
 
-\section{What was removed}
-
-The following are not part of the current protocol:
-
-\begin{itemize}[leftmargin=*]
-  \item shielded transfers, shielded deposits, and unshields;
-  \item notes, commitments, nullifiers, and the shielded Merkle tree;
-  \item zero-knowledge proofs and proof verification;
-  \item encrypted stealth amounts;
-  \item shielded wallet, RPC, CLI, and Tauri surfaces.
-\end{itemize}
-
-Stealth is not confidential. It provides one-time recipient addresses
-and key-image double-spend protection only. Sender and amount are public
-consensus data.
-
 \section{Verification obligations}
 
 A conforming implementation must reject:
@@ -226,8 +207,7 @@ A conforming implementation must reject:
   \item any stealth transaction outside 1,522--1,762 bytes;
   \item any wallet above the 20-transaction burst-free window without
         the multiplied fee;
-  \item any replay or duplicate key image;
-  \item any attempt to introduce removed shielded/ZK transaction types.
+  \item any replay or duplicate key image.
 \end{itemize}
 
 The test suite and load harness must exercise only transparent and
